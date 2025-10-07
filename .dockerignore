@@ -1,0 +1,65 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+env
+pip-log.txt
+pip-delete-this-directory.txt
+.tox
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.git
+.mypy_cache
+.pytest_cache
+.hypothesis
+
+# Documentation
+docs/_build
+
+# PyCharm
+.idea
+
+# VS Code
+.vscode
+
+# Spyder
+.spyderproject
+.spyproject
+
+# Rope
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache
+
+# Pyre type checker
+.pyre/
+
+# Development files
+*.md
+LICENSE
+.env*
+tests/
+examples/
+docs/
+
+# Kiro specs
+.kiro/
+
+# OS
+.DS_Store
+Thumbs.db

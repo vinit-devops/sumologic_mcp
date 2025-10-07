@@ -1,0 +1,97 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sumologic-mcp-server
+  labels:
+    app: sumologic-mcp-server
+    version: v1
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: sumologic-mcp-server
+  template:
+    metadata:
+      labels:
+        app: sumologic-mcp-server
+        version: v1
+    spec:
+      containers:
+      - name: sumologic-mcp
+        image: sumologic-mcp:latest
+        ports:
+        - containerPort: 8000
+          name: mcp-port
+        env:
+        - name: SUMOLOGIC_ACCESS_ID
+          valueFrom:
+            secretKeyRef:
+              name: sumologic-credentials
+              key: access-id
+        - name: SUMOLOGIC_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: sumologic-credentials
+              key: access-key
+        - name: SUMOLOGIC_ENDPOINT
+          valueFrom:
+            configMapKeyRef:
+              name: sumologic-config
+              key: endpoint
+        - name: SUMOLOGIC_LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: sumologic-config
+              key: log-level
+        - name: SUMOLOGIC_TIMEOUT
+          valueFrom:
+            configMapKeyRef:
+              name: sumologic-config
+              key: timeout
+        - name: SUMOLOGIC_MAX_RETRIES
+          valueFrom:
+            configMapKeyRef:
+              name: sumologic-config
+              key: max-retries
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          exec:
+            command:
+            - python
+            - -c
+            - "import sumologic_mcp; print('OK')"
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          exec:
+            command:
+            - python
+            - -c
+            - "import sumologic_mcp; print('OK')"
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        volumeMounts:
+        - name: logs
+          mountPath: /app/logs
+        - name: config
+          mountPath: /app/config
+      volumes:
+      - name: logs
+        emptyDir: {}
+      - name: config
+        configMap:
+          name: sumologic-app-config
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000

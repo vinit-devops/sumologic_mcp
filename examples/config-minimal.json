@@ -1,0 +1,5 @@
+{
+  "access_id": "your_sumologic_access_id_here",
+  "access_key": "your_sumologic_access_key_here",
+  "endpoint": "https://api.sumologic.com"
+}

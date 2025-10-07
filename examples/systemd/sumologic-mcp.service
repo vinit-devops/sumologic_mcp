@@ -1,0 +1,30 @@
+[Unit]
+Description=Sumo Logic MCP Server
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=sumologic-mcp
+Group=sumologic-mcp
+WorkingDirectory=/opt/sumologic-mcp
+ExecStart=/opt/sumologic-mcp/venv/bin/sumologic-mcp-server
+Restart=always
+RestartSec=10
+
+# Environment variables
+Environment=SUMOLOGIC_ACCESS_ID=your_access_id_here
+Environment=SUMOLOGIC_ACCESS_KEY=your_access_key_here
+Environment=SUMOLOGIC_ENDPOINT=https://api.sumologic.com
+Environment=SUMOLOGIC_LOG_LEVEL=INFO
+Environment=SUMOLOGIC_LOG_FORMAT=json
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/sumologic-mcp/logs
+
+[Install]
+WantedBy=multi-user.target

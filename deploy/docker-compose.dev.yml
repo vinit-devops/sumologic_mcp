@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  sumologic-mcp-dev:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      target: builder
+    container_name: sumologic-mcp-dev
+    restart: "no"
+    environment:
+      - SUMOLOGIC_ACCESS_ID=${SUMOLOGIC_ACCESS_ID}
+      - SUMOLOGIC_ACCESS_KEY=${SUMOLOGIC_ACCESS_KEY}
+      - SUMOLOGIC_ENDPOINT=${SUMOLOGIC_ENDPOINT:-https://api.sumologic.com/api}
+      - SUMOLOGIC_LOG_LEVEL=DEBUG
+      - PYTHONPATH=/app
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ../sumologic_mcp:/app/sumologic_mcp
+      - ../tests:/app/tests
+      - ../pyproject.toml:/app/pyproject.toml
+      - ./logs:/app/logs
+    ports:
+      - "8000:8000"
+    command: ["python", "-m", "sumologic_mcp.main", "--debug"]
+    networks:
+      - sumologic-dev-network
+
+networks:
+  sumologic-dev-network:
+    driver: bridge

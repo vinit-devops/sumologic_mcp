@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  sumologic-mcp:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: sumologic-mcp-server
+    restart: unless-stopped
+    environment:
+      - SUMOLOGIC_ACCESS_ID=${SUMOLOGIC_ACCESS_ID}
+      - SUMOLOGIC_ACCESS_KEY=${SUMOLOGIC_ACCESS_KEY}
+      - SUMOLOGIC_ENDPOINT=${SUMOLOGIC_ENDPOINT:-https://api.sumologic.com/api}
+      - SUMOLOGIC_LOG_LEVEL=${SUMOLOGIC_LOG_LEVEL:-INFO}
+      - SUMOLOGIC_TIMEOUT=${SUMOLOGIC_TIMEOUT:-30}
+      - SUMOLOGIC_MAX_RETRIES=${SUMOLOGIC_MAX_RETRIES:-3}
+      - SUMOLOGIC_RATE_LIMIT_DELAY=${SUMOLOGIC_RATE_LIMIT_DELAY:-1.0}
+    volumes:
+      - ./logs:/app/logs
+      - ./config:/app/config
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sumologic_mcp; print('OK')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - sumologic-network
+
+  # Optional: Add a reverse proxy for production
+  nginx:
+    image: nginx:alpine
+    container_name: sumologic-mcp-proxy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - sumologic-mcp
+    networks:
+      - sumologic-network
+    profiles:
+      - production
+
+networks:
+  sumologic-network:
+    driver: bridge
+
+volumes:
+  logs:
+  config:

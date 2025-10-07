@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "sumologic": {
+      "command": "python",
+      "args": ["-m", "sumologic_mcp.main"],
+      "env": {
+        "SUMOLOGIC_ACCESS_ID": "your-access-id-here",
+        "SUMOLOGIC_ACCESS_KEY": "your-access-key-here",
+        "SUMOLOGIC_ENDPOINT": "https://api.sumologic.com/api",
+        "SUMOLOGIC_LOG_LEVEL": "INFO"
+      }
+    }
+  }
+}

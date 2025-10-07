@@ -1,0 +1,43 @@
+[Unit]
+Description=Sumo Logic MCP Server
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=sumologic
+Group=sumologic
+WorkingDirectory=/opt/sumologic-mcp
+ExecStart=/opt/sumologic-mcp/venv/bin/python -m sumologic_mcp.main
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sumologic-mcp
+
+# Environment variables
+Environment=PYTHONPATH=/opt/sumologic-mcp
+Environment=PYTHONUNBUFFERED=1
+Environment=SUMOLOGIC_LOG_LEVEL=INFO
+
+# Load environment variables from file
+EnvironmentFile=-/etc/sumologic-mcp/environment
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/sumologic-mcp/logs
+ReadWritePaths=/var/log/sumologic-mcp
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=4096
+
+# Process limits
+MemoryMax=512M
+CPUQuota=100%
+
+[Install]
+WantedBy=multi-user.target

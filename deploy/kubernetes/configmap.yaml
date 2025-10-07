@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sumologic-config
+data:
+  endpoint: "https://api.sumologic.com/api"
+  log-level: "INFO"
+  timeout: "30"
+  max-retries: "3"
+  rate-limit-delay: "1.0"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sumologic-app-config
+data:
+  config.json: |
+    {
+      "server": {
+        "host": "0.0.0.0",
+        "port": 8000,
+        "debug": false
+      },
+      "logging": {
+        "level": "INFO",
+        "format": "json",
+        "file": "/app/logs/sumologic-mcp.log"
+      },
+      "sumo_logic": {
+        "timeout": 30,
+        "max_retries": 3,
+        "rate_limit_delay": 1.0,
+        "connection_pool_size": 10
+      }
+    }

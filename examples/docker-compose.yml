@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  sumologic-mcp-server:
+    build: .
+    environment:
+      - SUMOLOGIC_ACCESS_ID=${SUMOLOGIC_ACCESS_ID}
+      - SUMOLOGIC_ACCESS_KEY=${SUMOLOGIC_ACCESS_KEY}
+      - SUMOLOGIC_ENDPOINT=${SUMOLOGIC_ENDPOINT:-https://api.sumologic.com}
+      - SUMOLOGIC_LOG_LEVEL=${SUMOLOGIC_LOG_LEVEL:-INFO}
+      - SUMOLOGIC_LOG_FORMAT=${SUMOLOGIC_LOG_FORMAT:-json}
+    volumes:
+      - ./logs:/app/logs
+    restart: unless-stopped
+    stdin_open: true
+    tty: true

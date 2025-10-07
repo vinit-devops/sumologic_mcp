@@ -1,0 +1,12 @@
+{
+  "access_id": "your_sumologic_access_id_here",
+  "access_key": "your_sumologic_access_key_here",
+  "endpoint": "https://api.sumologic.com",
+  "timeout": 60,
+  "max_retries": 5,
+  "rate_limit_delay": 0.5,
+  "log_level": "DEBUG",
+  "log_format": "text",
+  "server_name": "sumologic-mcp-dev",
+  "server_version": "0.1.0-dev"
+}

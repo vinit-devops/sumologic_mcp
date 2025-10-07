@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "sumologic": {
+      "command": "sumologic-mcp-server",
+      "env": {
+        "SUMOLOGIC_ACCESS_ID": "your_access_id_here",
+        "SUMOLOGIC_ACCESS_KEY": "your_access_key_here",
+        "SUMOLOGIC_ENDPOINT": "https://api.sumologic.com"
+      }
+    }
+  }
+}

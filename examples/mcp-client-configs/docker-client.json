@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "sumologic": {
+      "command": "docker",
+      "args": [
+        "run",
+        "--rm",
+        "-i",
+        "--env", "SUMOLOGIC_ACCESS_ID=your-access-id-here",
+        "--env", "SUMOLOGIC_ACCESS_KEY=your-access-key-here",
+        "--env", "SUMOLOGIC_ENDPOINT=https://api.sumologic.com/api",
+        "--env", "SUMOLOGIC_LOG_LEVEL=INFO",
+        "sumologic-mcp:latest"
+      ]
+    }
+  }
+}

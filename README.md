@@ -34,7 +34,7 @@ This MCP server provides tools to interact with Sumo Logic's APIs, allowing user
 
 ## Installation
 
-### From PyPI (when published)
+### From PyPI (published)
 ```bash
 pip install sumologic-mcp-python
 ```

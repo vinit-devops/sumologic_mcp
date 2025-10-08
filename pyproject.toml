@@ -4,12 +4,12 @@ build-backend = "hatchling.build"
 
 [project]
 name = "sumologic-mcp-python"
-version = "0.1.0"
+version = "0.1.1"
 description = "Model Context Protocol server for Sumo Logic API integration"
 readme = "README.md"
 license = {file = "LICENSE"}
 authors = [
-    {name = "Sumo Logic MCP Team"}
+    {name = "Vinit Kumar", email = "vinitk805582@gmail.com"}
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",

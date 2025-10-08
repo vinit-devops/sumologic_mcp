@@ -1,7 +1,7 @@
 """Sumo Logic MCP Server - A Python implementation of Model Context Protocol server for Sumo Logic."""
 
-__version__ = "0.1.0"
-__author__ = "Sumo Logic MCP Team"
+__version__ = "0.1.1"
+__author__ = "Vinit Kumar"
 __description__ = "Model Context Protocol server for Sumo Logic API integration"
 
 from .server import SumoLogicMCPServer

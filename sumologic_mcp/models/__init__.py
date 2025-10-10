@@ -25,6 +25,24 @@ from .responses import (
     PaginatedResponse
 )
 
+from .monitor import (
+    MonitorType,
+    TriggerType,
+    NotificationType,
+    MonitorStatus,
+    ThresholdType,
+    OccurrenceType,
+    TriggerSource,
+    TriggerCondition,
+    NotificationAction,
+    MonitorConfig,
+    MonitorResponse,
+    MonitorStatusInfo,
+    ActiveAlert,
+    MonitorHistoryEntry,
+    MonitorValidationResult
+)
+
 __all__ = [
     # Configuration models
     'SumoLogicConfig',
@@ -47,5 +65,22 @@ __all__ = [
     'MetricsQueryResult',
     'FolderInfo',
     'APIResponse',
-    'PaginatedResponse'
+    'PaginatedResponse',
+    
+    # Monitor models
+    'MonitorType',
+    'TriggerType',
+    'NotificationType',
+    'MonitorStatus',
+    'ThresholdType',
+    'OccurrenceType',
+    'TriggerSource',
+    'TriggerCondition',
+    'NotificationAction',
+    'MonitorConfig',
+    'MonitorResponse',
+    'MonitorStatusInfo',
+    'ActiveAlert',
+    'MonitorHistoryEntry',
+    'MonitorValidationResult'
 ]

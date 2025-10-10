@@ -1,4 +1,10 @@
-"""Main MCP server implementation for Sumo Logic."""
+"""Main MCP server implementation for Sumo Logic.
+
+Note: This implementation uses a workaround for MCP Python SDK bug #987
+where CallToolResult objects are incorrectly serialized. We return plain
+dictionaries instead of CallToolResult objects to avoid validation errors.
+See: https://github.com/modelcontextprotocol/python-sdk/issues/987
+"""
 
 import asyncio
 import logging
@@ -6,7 +12,7 @@ from typing import Dict, Any, List, Optional, Callable
 import structlog
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import Tool, TextContent, CallToolResult
+from mcp.types import Tool
 
 from .config import SumoLogicConfig
 from .auth import SumoLogicAuth
@@ -15,6 +21,7 @@ from .tools.search_tools import SearchTools
 from .tools.dashboard_tools import DashboardTools
 from .tools.metrics_tools import MetricsTools
 from .tools.collector_tools import CollectorTools
+from .tools.monitor_tools import MonitorTools
 from .exceptions import SumoLogicError, ValidationError, APIError
 from .error_handler import ErrorHandler
 from .monitoring import MonitoringManager
@@ -44,6 +51,7 @@ class SumoLogicMCPServer:
         self.dashboard_tools: Optional[DashboardTools] = None
         self.metrics_tools: Optional[MetricsTools] = None
         self.collector_tools: Optional[CollectorTools] = None
+        self.monitor_tools: Optional[MonitorTools] = None
         
         # Tool registry
         self.tool_handlers: Dict[str, Callable] = {}
@@ -86,6 +94,7 @@ class SumoLogicMCPServer:
             self.dashboard_tools = DashboardTools(self.api_client)
             self.metrics_tools = MetricsTools(self.api_client)
             self.collector_tools = CollectorTools(self.api_client)
+            self.monitor_tools = MonitorTools(self.api_client)
             
             # Start monitoring
             await self.monitoring_manager.start()
@@ -119,7 +128,7 @@ class SumoLogicMCPServer:
             )
             raise
         
-    async def handle_tool_call(self, tool_name: str, arguments: Dict[str, Any]) -> CallToolResult:
+    async def handle_tool_call(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """Route tool calls to appropriate handlers.
         
         Args:
@@ -127,7 +136,7 @@ class SumoLogicMCPServer:
             arguments: Tool arguments
             
         Returns:
-            Tool execution result
+            Dict with tool execution result (workaround for MCP SDK bug)
         """
         start_time = asyncio.get_event_loop().time()
         
@@ -139,13 +148,17 @@ class SumoLogicMCPServer:
             if tool_name not in self.tool_handlers:
                 error_msg = f"Unknown tool: {tool_name}"
                 self.logger.error(error_msg, available_tools=list(self.tool_handlers.keys()))
-                return CallToolResult(
-                    content=[TextContent(
-                        type="text",
-                        text=f"Error: {error_msg}. Available tools: {', '.join(self.tool_handlers.keys())}"
-                    )],
-                    isError=True
-                )
+                # Return dict directly to avoid MCP SDK serialization bug
+                return {
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": f"Error: {error_msg}. Available tools: {', '.join(self.tool_handlers.keys())}",
+                            "annotations": None
+                        }
+                    ],
+                    "isError": True
+                }
             
             # Get tool handler
             handler = self.tool_handlers[tool_name]
@@ -165,13 +178,17 @@ class SumoLogicMCPServer:
                 response_size=len(response_text)
             )
             
-            # Format result as MCP response
-            return CallToolResult(
-                content=[TextContent(
-                    type="text",
-                    text=response_text
-                )]
-            )
+            # Return dict directly to avoid MCP SDK serialization bug
+            return {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": response_text,
+                        "annotations": None
+                    }
+                ],
+                "isError": False
+            }
             
         except Exception as e:
             # Calculate execution time for error case
@@ -216,6 +233,10 @@ class SumoLogicMCPServer:
             collector_tool_defs = self.collector_tools.get_tool_definitions()
             all_tools.extend(collector_tool_defs)
             
+            # Get monitor tools
+            monitor_tool_defs = self.monitor_tools.get_tool_definitions()
+            all_tools.extend(monitor_tool_defs)
+            
             # Add health check tool
             health_check_tool = {
                 "name": "health_check",
@@ -252,6 +273,8 @@ class SumoLogicMCPServer:
                     handler = getattr(self.metrics_tools, tool_name)
                 elif tool_name in [t["name"] for t in collector_tool_defs]:
                     handler = getattr(self.collector_tools, tool_name)
+                elif tool_name in [t["name"] for t in monitor_tool_defs]:
+                    handler = getattr(self.monitor_tools, tool_name)
                 else:
                     continue
                     
@@ -276,7 +299,8 @@ class SumoLogicMCPServer:
                 search_tools=len(search_tool_defs),
                 dashboard_tools=len(dashboard_tool_defs),
                 metrics_tools=len(metrics_tool_defs),
-                collector_tools=len(collector_tool_defs)
+                collector_tools=len(collector_tool_defs),
+                monitor_tools=len(monitor_tool_defs)
             )
             
         except Exception as e:
@@ -310,8 +334,26 @@ class SumoLogicMCPServer:
         
         # Set up tool call handler
         @self.mcp_server.call_tool()
-        async def handle_call_tool(name: str, arguments: dict) -> CallToolResult:
-            return await self.handle_tool_call(name, arguments)
+        async def handle_call_tool(name: str, arguments: dict):
+            # Workaround for MCP SDK bug: return dict instead of CallToolResult
+            # See: https://github.com/modelcontextprotocol/python-sdk/issues/987
+            try:
+                result = await self.handle_tool_call(name, arguments)
+                # Result is already a dict, return it directly
+                return result
+            except Exception as e:
+                # If there's an issue with our response construction, create a simple fallback
+                self.logger.error(f"Error in tool call handler: {e}")
+                return {
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": f"Internal error: {str(e)}",
+                            "annotations": None
+                        }
+                    ],
+                    "isError": True
+                }
         
         # Run server with stdio
         async with stdio_server() as (read_stream, write_stream):
@@ -393,7 +435,8 @@ class SumoLogicMCPServer:
             self.search_tools,
             self.dashboard_tools,
             self.metrics_tools,
-            self.collector_tools
+            self.collector_tools,
+            self.monitor_tools
         ]
         
         for tool in required_tools:

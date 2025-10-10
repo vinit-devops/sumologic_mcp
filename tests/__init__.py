@@ -1,0 +1,1 @@
+"""Test package for Sumo Logic MCP server."""

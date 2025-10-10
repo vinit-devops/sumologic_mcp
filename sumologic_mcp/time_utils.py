@@ -10,13 +10,15 @@ from datetime import datetime, timedelta
 from typing import Union, Optional
 import logging
 
+from .exceptions import TimeValidationError
+
 logger = logging.getLogger(__name__)
 
 
 class TimeParser:
     """Utility class for parsing time expressions compatible with reference implementation."""
     
-    # Relative time pattern matching reference implementation
+    # Relative time pattern matching reference implementation - fixed regex
     RELATIVE_TIME_PATTERN = re.compile(r'^-?(\d+)([smhdw])$', re.IGNORECASE)
     
     # Time unit mappings
@@ -50,14 +52,18 @@ class TimeParser:
             ValueError: If time string format is not supported
         """
         if not time_str:
-            raise ValueError("Time string cannot be empty")
+            raise TimeValidationError(
+                "Time string cannot be empty",
+                time_str or "",
+                "Non-empty time string in supported format"
+            )
         
         time_str = time_str.strip()
         base_time = base_time or datetime.utcnow()
         
-        # Handle 'now'
+        # Handle 'now' - use current UTC time
         if time_str.lower() == 'now':
-            return base_time
+            return datetime.utcnow()
         
         # Handle relative time expressions
         if cls._is_relative_time(time_str):
@@ -71,7 +77,11 @@ class TimeParser:
         if cls._is_epoch_time(time_str):
             return cls._parse_epoch_time(time_str)
         
-        raise ValueError(f"Unsupported time format: {time_str}")
+        raise TimeValidationError(
+            "Unsupported time format",
+            time_str,
+            "ISO 8601 (YYYY-MM-DDTHH:MM:SSZ), relative time (-1h, -30m, now), or epoch time (seconds/milliseconds)"
+        )
     
     @classmethod
     def _is_relative_time(cls, time_str: str) -> bool:
@@ -83,7 +93,11 @@ class TimeParser:
         """Parse relative time expression like '-1h', '-30m'."""
         match = cls.RELATIVE_TIME_PATTERN.match(time_str)
         if not match:
-            raise ValueError(f"Invalid relative time format: {time_str}")
+            raise TimeValidationError(
+                "Invalid relative time format",
+                time_str,
+                "Relative time format like -1h, -30m, -24h, -7d, -1w, or 'now'"
+            )
         
         amount_str, unit = match.groups()
         amount = int(amount_str)
@@ -95,7 +109,11 @@ class TimeParser:
         # Convert unit to timedelta argument
         unit_name = cls.TIME_UNITS.get(unit.lower())
         if not unit_name:
-            raise ValueError(f"Unsupported time unit: {unit}")
+            raise TimeValidationError(
+                f"Unsupported time unit '{unit}'",
+                time_str,
+                f"Supported units: {', '.join(cls.TIME_UNITS.keys())} (seconds, minutes, hours, days, weeks)"
+            )
         
         # Create timedelta
         delta_kwargs = {unit_name: amount}
@@ -106,7 +124,7 @@ class TimeParser:
     @classmethod
     def _is_iso_format(cls, time_str: str) -> bool:
         """Check if time string is in ISO 8601 format."""
-        # Basic ISO 8601 pattern
+        # Basic ISO 8601 pattern - fixed patterns
         iso_patterns = [
             r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z?$',
             r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?[+-]\d{2}:\d{2}$',
@@ -143,7 +161,11 @@ class TimeParser:
             return datetime.fromisoformat(time_str.replace('Z', '+00:00'))
             
         except Exception as e:
-            raise ValueError(f"Failed to parse ISO time '{time_str}': {e}")
+            raise TimeValidationError(
+                f"Failed to parse ISO 8601 time format: {str(e)}",
+                time_str,
+                "ISO 8601 format like 2023-12-01T10:00:00Z or 2023-12-01T10:00:00.123Z"
+            )
     
     @classmethod
     def _is_epoch_time(cls, time_str: str) -> bool:
@@ -171,7 +193,25 @@ class TimeParser:
                 return datetime.fromtimestamp(timestamp)
                 
         except (ValueError, OSError) as e:
-            raise ValueError(f"Failed to parse epoch time '{time_str}': {e}")
+            raise TimeValidationError(
+                f"Failed to parse epoch time: {str(e)}",
+                time_str,
+                "Epoch time in seconds (1701428400) or milliseconds (1701428400000)"
+            )
+    
+    @classmethod
+    def to_sumo_api_format(cls, dt: datetime) -> str:
+        """Convert datetime to exact Sumo Logic API format.
+        
+        Args:
+            dt: Datetime object to convert
+            
+        Returns:
+            Time string in exact Sumo Logic API format (ISO 8601 with milliseconds and Z suffix)
+        """
+        # Sumo Logic API expects ISO 8601 format with milliseconds and Z suffix
+        # Format: YYYY-MM-DDTHH:MM:SS.sssZ
+        return dt.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z'
     
     @classmethod
     def to_sumo_time_format(cls, dt: datetime) -> str:
@@ -205,17 +245,98 @@ class TimeParser:
             end_dt = cls.parse_time(to_time)
             
             if start_dt >= end_dt:
-                raise ValueError(f"Start time ({from_time}) must be before end time ({to_time})")
+                raise TimeValidationError(
+                    f"Start time must be before end time",
+                    f"from_time='{from_time}', to_time='{to_time}'",
+                    "from_time should represent an earlier time than to_time (e.g., from='-2h', to='-1h' or from='2023-12-01T09:00:00Z', to='2023-12-01T10:00:00Z')"
+                )
             
             # Check for reasonable time range (not more than 1 year)
             max_range = timedelta(days=365)
             if end_dt - start_dt > max_range:
-                raise ValueError(f"Time range too large: {end_dt - start_dt}. Maximum allowed: {max_range}")
+                raise TimeValidationError(
+                    f"Time range too large: {end_dt - start_dt}",
+                    f"from_time='{from_time}', to_time='{to_time}'",
+                    f"Maximum allowed time range: {max_range} (365 days). Consider using a smaller time window for better performance."
+                )
             
             return start_dt, end_dt
             
+        except TimeValidationError:
+            # Re-raise TimeValidationError as-is
+            raise
         except Exception as e:
-            raise ValueError(f"Invalid time range: {e}")
+            raise TimeValidationError(
+                f"Invalid time range: {str(e)}",
+                f"from_time='{from_time}', to_time='{to_time}'",
+                "Valid time formats: ISO 8601, relative time (-1h, -30m, now), or epoch time"
+            )
+    
+    @classmethod
+    def validate_and_convert_time_range(cls, from_time: str, to_time: str) -> tuple[str, str]:
+        """Validate and convert time range to Sumo Logic API format.
+        
+        Args:
+            from_time: Start time string (supports relative, ISO 8601, epoch, or 'now')
+            to_time: End time string (supports relative, ISO 8601, epoch, or 'now')
+            
+        Returns:
+            Tuple of (from_api_format, to_api_format) in Sumo Logic API format
+            
+        Raises:
+            ValueError: If time range is invalid or formats are unsupported
+        """
+        try:
+            # Parse and validate the time range
+            start_dt, end_dt = cls.validate_time_range(from_time, to_time)
+            
+            # Convert to Sumo Logic API format
+            from_api_format = cls.to_sumo_api_format(start_dt)
+            to_api_format = cls.to_sumo_api_format(end_dt)
+            
+            logger.debug(f"Converted time range: {from_time} -> {from_api_format}, {to_time} -> {to_api_format}")
+            
+            return from_api_format, to_api_format
+            
+        except TimeValidationError:
+            # Re-raise TimeValidationError as-is
+            raise
+        except Exception as e:
+            raise TimeValidationError(
+                f"Failed to validate and convert time range: {str(e)}",
+                f"from_time='{from_time}', to_time='{to_time}'",
+                "Ensure both time values are in supported formats and form a valid time range"
+            )
+    
+    @classmethod
+    def convert_now_to_api_format(cls) -> str:
+        """Convert 'now' to current timestamp in Sumo Logic API format.
+        
+        Returns:
+            Current timestamp in ISO 8601 format with milliseconds and Z suffix
+        """
+        return cls.to_sumo_api_format(datetime.utcnow())
+    
+    @classmethod
+    def convert_time_for_api(cls, time_str: str) -> str:
+        """Convert any time format to Sumo Logic API format.
+        
+        Args:
+            time_str: Time string in any supported format
+            
+        Returns:
+            Time string in Sumo Logic API format
+            
+        Raises:
+            TimeValidationError: If time format is not supported
+        """
+        # Handle 'now' specifically for API calls
+        if time_str.lower() == 'now':
+            return cls.convert_now_to_api_format()
+        
+        # Parse the time and convert to API format
+        dt = cls.parse_time(time_str)
+        return cls.to_sumo_api_format(dt)
     
     @classmethod
     def get_relative_time_examples(cls) -> list[dict]:

@@ -350,6 +350,143 @@ class TimeoutError(SumoLogicError):
         return result
 
 
+class TimeValidationError(ValidationError):
+    """Raised when time format validation fails.
+    
+    This exception is raised when:
+    - Time strings are in unsupported formats
+    - Relative time expressions are malformed
+    - Time ranges are logically invalid (from_time >= to_time)
+    - ISO 8601 format parsing fails
+    """
+    
+    def __init__(
+        self, 
+        message: str, 
+        time_value: str, 
+        expected_format: str,
+        context: Optional[Dict[str, Any]] = None
+    ):
+        """Initialize time validation error.
+        
+        Args:
+            message: Error message describing the time validation failure
+            time_value: The time value that failed validation
+            expected_format: Description of the expected time format
+            context: Additional context about the validation failure
+        """
+        full_message = f"Invalid time format '{time_value}': {message}. Expected: {expected_format}"
+        
+        # Add helpful examples to context
+        validation_context = context or {}
+        validation_context.update({
+            "expected_format": expected_format,
+            "time_value": time_value,
+            "supported_formats": [
+                "ISO 8601: '2023-12-01T10:00:00Z'",
+                "Relative time: '-1h', '-30m', '-24h', '-7d', '-1w'", 
+                "Current time: 'now'",
+                "Epoch seconds: '1701428400'",
+                "Epoch milliseconds: '1701428400000'"
+            ],
+            "examples": {
+                "valid_relative": ["-1h", "-30m", "-24h", "-7d", "-1w", "now"],
+                "valid_iso8601": ["2023-12-01T10:00:00Z", "2023-12-01T10:00:00.123Z"],
+                "valid_epoch": ["1701428400", "1701428400000"]
+            },
+            "documentation_url": "https://help.sumologic.com/docs/search/get-started-with-search/search-basics/time-range-expressions/"
+        })
+        
+        super().__init__(
+            full_message,
+            field_name="time_format",
+            field_value=time_value,
+            context=validation_context
+        )
+        self.time_value = time_value
+        self.expected_format = expected_format
+    
+    def get_help_message(self) -> str:
+        """Get a helpful message explaining how to fix the time format error."""
+        return (
+            f"Time format error for '{self.time_value}'. "
+            f"Please use one of these formats:\n"
+            f"• Relative time: -1h, -30m, -24h, -7d, -1w, now\n"
+            f"• ISO 8601: 2023-12-01T10:00:00Z\n"
+            f"• Epoch time: 1701428400 (seconds) or 1701428400000 (milliseconds)\n"
+            f"For more information, see: {self.context.get('documentation_url', 'Sumo Logic documentation')}"
+        )
+
+
+class APIParameterError(ValidationError):
+    """Raised when API parameter validation fails.
+    
+    This exception is raised when:
+    - Parameter types don't match API requirements
+    - Required parameters are missing
+    - Parameter values are outside allowed ranges
+    - Parameter names don't match official API documentation
+    """
+    
+    def __init__(
+        self, 
+        param_name: str, 
+        param_value: Any, 
+        expected_type: str, 
+        api_endpoint: str,
+        context: Optional[Dict[str, Any]] = None
+    ):
+        """Initialize API parameter error.
+        
+        Args:
+            param_name: Name of the parameter that failed validation
+            param_value: Value that failed validation
+            expected_type: Description of the expected parameter type/format
+            api_endpoint: API endpoint where the error occurred
+            context: Additional context about the validation failure
+        """
+        if param_value is None:
+            full_message = f"Missing required parameter '{param_name}' for {api_endpoint}. Expected: {expected_type}"
+        else:
+            actual_type = type(param_value).__name__
+            full_message = f"Invalid parameter '{param_name}' for {api_endpoint}: got {actual_type}, expected {expected_type}"
+        
+        # Add helpful context
+        validation_context = context or {}
+        validation_context.update({
+            "param_name": param_name,
+            "expected_type": expected_type,
+            "api_endpoint": api_endpoint,
+            "actual_type": type(param_value).__name__ if param_value is not None else "None",
+            "documentation_url": "https://api.sumologic.com/docs/"
+        })
+        
+        super().__init__(
+            full_message,
+            field_name=param_name,
+            field_value=param_value,
+            context=validation_context
+        )
+        self.param_name = param_name
+        self.expected_type = expected_type
+        self.api_endpoint = api_endpoint
+    
+    def get_help_message(self) -> str:
+        """Get a helpful message explaining how to fix the parameter error."""
+        if self.field_value is None:
+            return (
+                f"The required parameter '{self.param_name}' is missing for {self.api_endpoint}. "
+                f"Please provide a value of type: {self.expected_type}. "
+                f"See the official API documentation at: {self.context.get('documentation_url', 'https://api.sumologic.com/docs/')}"
+            )
+        else:
+            return (
+                f"The parameter '{self.param_name}' has an invalid type for {self.api_endpoint}. "
+                f"Expected: {self.expected_type}, but got: {self.context.get('actual_type', 'unknown')}. "
+                f"Please check the official API documentation at: {self.context.get('documentation_url', 'https://api.sumologic.com/docs/')}"
+            )
+
+
 # Export all exception classes
 __all__ = [
     'SumoLogicError',
@@ -359,5 +496,7 @@ __all__ = [
     'ValidationError',
     'ConfigurationError',
     'SearchError',
-    'TimeoutError'
+    'TimeoutError',
+    'TimeValidationError',
+    'APIParameterError'
 ]

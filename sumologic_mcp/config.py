@@ -501,6 +501,9 @@ class SearchRequest(BaseModel):
         ge=0, 
         description="Result offset for pagination"
     )
+    time_zone: Optional[str] = Field(None, description="Time zone for query")
+    by_receipt_time: bool = Field(default=False, description="Search by receipt time")
+    auto_parsing_mode: Optional[str] = Field(None, description="Auto parsing mode")
     
     @validator("query")
     def validate_query(cls, v: str) -> str:
@@ -508,6 +511,50 @@ class SearchRequest(BaseModel):
         if not v.strip():
             raise ValueError("Query cannot be empty")
         return v.strip()
+    
+    @validator("from_time", "to_time")
+    def validate_time_format(cls, v: str) -> str:
+        """Validate time format (ISO 8601, relative time, or 'now')."""
+        if not v.strip():
+            raise ValueError("Time cannot be empty")
+        
+        v = v.strip()
+        
+        # Allow 'now' as a valid time format
+        if v.lower() == 'now':
+            return v
+        
+        import re
+        
+        # Enhanced ISO 8601 patterns to match Sumo Logic API requirements
+        iso_patterns = [
+            r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z$',  # With milliseconds and Z
+            r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{6})?Z$',  # With microseconds and Z
+            r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?[+-]\d{2}:\d{2}$',  # With timezone offset
+            r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$',  # Basic ISO format
+            r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?$'  # With optional milliseconds
+        ]
+        
+        # Enhanced relative time pattern to match TimeParser implementation
+        relative_pattern = r'^-?(\d+)([smhdw])$'
+        
+        # Check epoch time patterns (seconds or milliseconds)
+        epoch_pattern = r'^\d{10,13}$'  # 10-13 digits for epoch seconds/milliseconds
+        
+        # Validate against all supported patterns
+        is_iso = any(re.match(pattern, v, re.IGNORECASE) for pattern in iso_patterns)
+        is_relative = re.match(relative_pattern, v, re.IGNORECASE)
+        is_epoch = re.match(epoch_pattern, v)
+        
+        if not (is_iso or is_relative or is_epoch):
+            raise ValueError(
+                f"Invalid time format '{v}'. Supported formats:\n"
+                "- 'now' for current time\n"
+                "- Relative time: '-1h', '-30m', '-24h', '-7d', '-1w'\n"
+                "- ISO 8601: '2023-12-01T10:00:00Z', '2023-12-01T10:00:00.123Z'\n"
+                "- Epoch time: '1701428400' (seconds) or '1701428400000' (milliseconds)"
+            )
+        return v
 
 
 class DashboardConfig(BaseModel):

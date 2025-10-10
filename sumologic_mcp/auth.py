@@ -113,8 +113,13 @@ class SumoLogicAuth:
             Configured HTTP client instance
         """
         if self._http_client is None:
+            # Check if SSL verification should be disabled
+            import os
+            verify_ssl = os.getenv('PYTHONHTTPSVERIFY', '1') != '0'
+            
             self._http_client = httpx.AsyncClient(
                 timeout=httpx.Timeout(self.config.timeout),
+                verify=verify_ssl,
                 headers={
                     "User-Agent": f"sumologic-mcp-server/{self.config.server_version}",
                     "Accept": "application/json",

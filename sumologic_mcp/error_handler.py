@@ -1,10 +1,17 @@
-"""Centralized error handling and logging for Sumo Logic MCP server."""
+"""Centralized error handling and logging for Sumo Logic MCP server.
+
+Note: This implementation uses a workaround for MCP Python SDK bug #987
+where CallToolResult objects are incorrectly serialized. We return plain
+dictionaries instead of CallToolResult objects to avoid validation errors.
+See: https://github.com/modelcontextprotocol/python-sdk/issues/987
+"""
 
 import logging
 import traceback
 from typing import Dict, Any, Optional, Union
 import structlog
-from mcp.types import CallToolResult, TextContent
+# MCP types no longer needed due to workaround for SDK bug
+# from mcp.types import CallToolResult, TextContent
 
 from .exceptions import (
     SumoLogicError,
@@ -38,7 +45,7 @@ class ErrorHandler:
         tool_name: str,
         arguments: Dict[str, Any],
         execution_time_ms: Optional[float] = None
-    ) -> CallToolResult:
+    ) -> Dict[str, Any]:
         """Handle errors from tool execution and format MCP response.
         
         Args:
@@ -48,7 +55,7 @@ class ErrorHandler:
             execution_time_ms: Tool execution time in milliseconds
             
         Returns:
-            CallToolResult with formatted error response
+            Dict with formatted error response (workaround for MCP SDK bug)
         """
         # Log the error with appropriate level and context
         self._log_error(error, tool_name, arguments, execution_time_ms)
@@ -56,13 +63,18 @@ class ErrorHandler:
         # Format error response based on error type
         error_response = self._format_error_response(error, tool_name)
         
-        return CallToolResult(
-            content=[TextContent(
-                type="text",
-                text=error_response
-            )],
-            isError=True
-        )
+        # Return dict directly to avoid MCP SDK serialization bug
+        # See: https://github.com/modelcontextprotocol/python-sdk/issues/987
+        return {
+            "content": [
+                {
+                    "type": "text",
+                    "text": error_response,
+                    "annotations": None
+                }
+            ],
+            "isError": True
+        }
     
     def _log_error(
         self,

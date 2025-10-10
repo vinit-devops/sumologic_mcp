@@ -26,6 +26,14 @@ This MCP server provides tools to interact with Sumo Logic's APIs, allowing user
 - Configure data sources within collectors
 - Monitor collector status and health
 
+### 🚨 Monitor Management
+- Create, update, and delete monitoring rules
+- List and search monitors with advanced filtering
+- Enable/disable monitors and manage their status
+- Get active alerts and monitor health status
+- Validate monitor configurations
+- View monitor execution history and performance metrics
+
 ## Requirements
 
 - Python 3.8 or higher
@@ -85,7 +93,7 @@ Configure the server using environment variables with the `SUMOLOGIC_` prefix:
 | `SUMOLOGIC_LOG_LEVEL` | ❌ | INFO | Log level | DEBUG, INFO, WARNING, ERROR, CRITICAL |
 | `SUMOLOGIC_LOG_FORMAT` | ❌ | json | Log format | json, text |
 | `SUMOLOGIC_SERVER_NAME` | ❌ | sumologic-mcp-server | MCP server name | Any string |
-| `SUMOLOGIC_SERVER_VERSION` | ❌ | 0.1.0 | MCP server version | Any string |
+| `SUMOLOGIC_SERVER_VERSION` | ❌ | 0.1.1 | MCP server version | Any string |
 
 ### Configuration File Support
 
@@ -112,7 +120,7 @@ Create a JSON configuration file for easier management:
   "log_level": "INFO",
   "log_format": "json",
   "server_name": "sumologic-mcp-server",
-  "server_version": "0.1.0"
+  "server_version": "0.1.1"
 }
 ```
 
@@ -354,6 +362,20 @@ Configure your MCP client to connect to this server. Example configuration for v
 - `delete_collector`: Delete collector
 - `list_sources`: List sources in collector
 - `create_source`: Create new source
+
+### Monitor Tools
+- `list_monitors`: List all monitors with filtering and pagination
+- `search_monitors`: Search monitors with advanced query capabilities
+- `get_monitor`: Get detailed monitor configuration and metadata
+- `create_monitor`: Create new monitor with validation
+- `update_monitor`: Update existing monitor configuration
+- `delete_monitor`: Delete monitor with cascade information
+- `get_monitor_status`: Get current monitor status and health
+- `get_active_alerts`: Get all currently active alerts
+- `enable_monitor`: Enable specified monitor
+- `disable_monitor`: Disable specified monitor
+- `validate_monitor_config`: Validate monitor configuration
+- `get_monitor_history`: Get monitor execution history and metrics
 
 ## Development
 

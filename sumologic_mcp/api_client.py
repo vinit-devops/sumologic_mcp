@@ -75,10 +75,17 @@ class SumoLogicAPIClient:
             )
         )
         
+        # Only transient/infra-class failures should count toward opening the
+        # circuit. Bare `Exception` would mean user errors (e.g. invalid query
+        # syntax → 4xx, validation errors) also count, which can trip the
+        # breaker on benign batches of work and degrade tools unnecessarily.
         circuit_breaker_config = CircuitBreakerConfig(
             failure_threshold=max(5, self.config.max_retries * 2),
             recovery_timeout=60.0,
-            expected_exception=Exception,
+            expected_exception=(
+                APIError, RateLimitError, TimeoutError,
+                ConnectionError, OSError, httpx.RequestError,
+            ),
             success_threshold=3
         )
         
@@ -819,37 +826,56 @@ class SumoLogicAPIClient:
                     search_state=job_state
                 )
             
-            # Get messages (log records)
+            # Try /records first (for aggregate queries), fall back to /messages.
+            # If both are empty, return empty results gracefully.
             params = {
                 "offset": offset,
                 "limit": limit
             }
-            
-            response = await self._make_request(
-                method="GET",
-                endpoint=f"/api/v1/search/jobs/{job_id}/messages",
-                params=params,
-                operation_type="search_results"
-            )
-            
-            results = await self._parse_json_response(response)
-            
+
+            result_type = "records"
+            try:
+                response = await self._make_request(
+                    method="GET",
+                    endpoint=f"/api/v1/search/jobs/{job_id}/records",
+                    params=params,
+                    operation_type="search_results"
+                )
+                results = await self._parse_json_response(response)
+            except Exception:
+                results = {"records": [], "fields": []}
+
+            if not results.get("records"):
+                # No records — try messages (may also be empty for no-match queries)
+                result_type = "messages"
+                try:
+                    response = await self._make_request(
+                        method="GET",
+                        endpoint=f"/api/v1/search/jobs/{job_id}/messages",
+                        params=params,
+                        operation_type="search_results"
+                    )
+                    results = await self._parse_json_response(response)
+                except Exception:
+                    results = {"messages": [], "fields": []}
+
             logger.info(
                 f"Retrieved search results",
                 extra={
                     "job_id": job_id,
-                    "returned_count": len(results.get("messages", [])),
+                    "result_type": result_type,
+                    "returned_count": len(results.get(result_type, [])),
                     "offset": offset,
                     "limit": limit
                 }
             )
-            
+
             # Combine with job status for complete result
             return {
                 "job_id": job_id,
                 "status": status,
                 "results": results,
-                "messages": results.get("messages", []),
+                "messages": results.get(result_type, []),
                 "fields": results.get("fields", [])
             }
             
@@ -1542,14 +1568,14 @@ class SumoLogicAPIClient:
     
     async def list_collectors(self, limit: int = 100, offset: int = 0) -> Dict[str, Any]:
         """List collectors with pagination.
-        
+
         Args:
             limit: Maximum collectors to return (1-1000)
             offset: Result offset for pagination
-            
+
         Returns:
             Dictionary containing collectors list and metadata
-            
+
         Raises:
             ValidationError: If parameters are invalid
             APIError: If API request fails
@@ -1586,17 +1612,17 @@ class SumoLogicAPIClient:
                 operation_type="collector"
             )
             
-            collectors = await self._parse_json_response(response)
-            
+            result = await self._parse_json_response(response)
+
             logger.info(
-                f"Retrieved {len(collectors.get('collectors', []))} collectors",
+                f"Retrieved {len(result.get('collectors', []))} collectors",
                 extra={
                     "limit": limit,
                     "offset": offset
                 }
             )
-            
-            return collectors
+
+            return result
             
         except APIError as e:
             raise APIError(

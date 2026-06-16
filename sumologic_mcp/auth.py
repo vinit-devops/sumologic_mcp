@@ -8,7 +8,7 @@ from typing import Dict, Optional, Tuple
 from urllib.parse import urlparse
 
 import httpx
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from .config import SumoLogicConfig
 from .exceptions import AuthenticationError, APIError, ConfigurationError, TimeoutError
@@ -25,9 +25,7 @@ class AuthSession(BaseModel):
     expires_at: Optional[datetime] = None
     session_id: Optional[str] = None
     
-    class Config:
-        """Pydantic configuration."""
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
 class SumoLogicAuth:

@@ -9,7 +9,7 @@ import logging
 import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, Optional, Type, Union, List
+from typing import Any, Callable, Dict, Optional, Tuple, Type, Union, List
 from datetime import datetime, timedelta
 
 from .exceptions import APIError, RateLimitError, TimeoutError, SumoLogicError
@@ -54,7 +54,10 @@ class CircuitBreakerConfig:
     """Configuration for circuit breaker."""
     failure_threshold: int = 5
     recovery_timeout: float = 60.0
-    expected_exception: Type[Exception] = Exception
+    # Pass a tuple of exception classes to count only transient/infra-class
+    # failures toward opening the circuit (the default Exception catches user
+    # errors too, which can trip the breaker on benign batches).
+    expected_exception: Union[Type[Exception], Tuple[Type[Exception], ...]] = Exception
     success_threshold: int = 3  # Successes needed in half-open to close
     
     def __post_init__(self):
@@ -221,7 +224,15 @@ class CircuitBreaker:
     async def _record_success(self):
         """Record successful operation."""
         self.stats.record_success()
-        
+
+        # In CLOSED state, a success means the recent failure streak is broken.
+        # Without this reset, failure_count is monotonic and the breaker is
+        # guaranteed to trip eventually after enough cumulative failures over
+        # the lifetime of the process — "5 consecutive failures" is the
+        # intended semantics, not "5 failures ever".
+        if self.stats.state == CircuitState.CLOSED:
+            self.stats.failure_count = 0
+
         logger.debug(
             f"Circuit breaker '{self.name}' recorded success",
             extra={

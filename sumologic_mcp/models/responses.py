@@ -1,6 +1,6 @@
 """Response models for Sumo Logic API data."""
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List, Dict, Any, Union
 from datetime import datetime
 from enum import Enum
@@ -28,7 +28,7 @@ class SearchResult(BaseModel):
     pending_errors: List[str] = Field(default_factory=list, description="Pending errors from search")
     histogram_buckets: Optional[List[Dict[str, Any]]] = Field(None, description="Histogram data buckets")
     
-    @validator('job_id')
+    @field_validator('job_id')
     def validate_job_id(cls, v):
         """Validate job ID format."""
         if not v or not isinstance(v, str):
@@ -85,7 +85,7 @@ class DashboardInfo(BaseModel):
     modified_by: Optional[str] = Field(None, description="Last modifier user ID")
     version: Optional[int] = Field(None, description="Dashboard version")
     
-    @validator('id')
+    @field_validator('id')
     def validate_id(cls, v):
         """Validate dashboard ID."""
         if not v or not isinstance(v, str):
@@ -160,7 +160,7 @@ class CollectorInfo(BaseModel):
     modified_at: Optional[str] = Field(None, description="Last modification timestamp")
     modified_by: Optional[str] = Field(None, description="Last modifier user ID")
     
-    @validator('id')
+    @field_validator('id')
     def validate_id(cls, v):
         """Validate collector ID."""
         if v is None or v < 0:
@@ -177,7 +177,7 @@ class MetricsQueryResult(BaseModel):
     query_info: Optional[Dict[str, Any]] = Field(None, description="Query execution information")
     unit: Optional[str] = Field(None, description="Unit of measurement")
     
-    @validator('query')
+    @field_validator('query')
     def validate_query(cls, v):
         """Validate metrics query."""
         if not v or not isinstance(v, str):
@@ -221,14 +221,14 @@ class PaginatedResponse(BaseModel):
     has_more: Optional[bool] = Field(None, description="Whether more items are available")
     next_token: Optional[str] = Field(None, description="Token for next page")
     
-    @validator('offset')
+    @field_validator('offset')
     def validate_offset(cls, v):
         """Validate offset is non-negative."""
         if v < 0:
             raise ValueError('Offset must be non-negative')
         return v
     
-    @validator('limit')
+    @field_validator('limit')
     def validate_limit(cls, v):
         """Validate limit is positive."""
         if v <= 0:

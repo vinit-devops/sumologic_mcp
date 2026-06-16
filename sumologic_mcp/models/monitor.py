@@ -1,6 +1,6 @@
 """Monitor-specific data models for Sumo Logic MCP server."""
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator, model_validator, ValidationInfo
 from typing import List, Dict, Any, Optional, Union
 from enum import Enum
 import re
@@ -67,7 +67,7 @@ class TriggerCondition(BaseModel):
     occurrence_type: OccurrenceType = Field(default=OccurrenceType.RESULT_COUNT, description="Type of occurrence evaluation")
     trigger_source: TriggerSource = Field(default=TriggerSource.ALL_RESULTS, description="Source for trigger evaluation")
     
-    @validator('time_range')
+    @field_validator('time_range')
     def validate_time_range(cls, v):
         """Validate time range format."""
         # Allow relative time expressions like -5m, -1h, -1d
@@ -75,7 +75,7 @@ class TriggerCondition(BaseModel):
             raise ValueError('Time range must be in relative format (e.g., -5m, -1h, -1d)')
         return v
     
-    @validator('threshold')
+    @field_validator('threshold')
     def validate_threshold(cls, v):
         """Validate threshold is a valid number."""
         if not isinstance(v, (int, float)):
@@ -92,10 +92,11 @@ class NotificationAction(BaseModel):
     webhook_url: Optional[str] = Field(None, description="Webhook URL for webhook notifications")
     message_body: Optional[str] = Field(None, description="Custom message body for notifications", max_length=2000)
     
-    @validator('recipients')
-    def validate_recipients(cls, v, values):
+    @field_validator('recipients')
+    @classmethod
+    def validate_recipients(cls, v, info: ValidationInfo):
         """Validate recipients based on action type."""
-        action_type = values.get('action_type')
+        action_type = info.data.get('action_type')
         
         if action_type == NotificationType.EMAIL and v:
             # Validate email addresses
@@ -106,10 +107,11 @@ class NotificationAction(BaseModel):
         
         return v
     
-    @validator('webhook_url')
-    def validate_webhook_url(cls, v, values):
+    @field_validator('webhook_url')
+    @classmethod
+    def validate_webhook_url(cls, v, info: ValidationInfo):
         """Validate webhook URL format."""
-        action_type = values.get('action_type')
+        action_type = info.data.get('action_type')
         
         if action_type == NotificationType.WEBHOOK:
             if not v:
@@ -133,7 +135,7 @@ class MonitorConfig(BaseModel):
     group_notifications: bool = Field(default=True, description="Whether to group notifications")
     evaluation_delay: Optional[str] = Field(default="0m", description="Delay before evaluation (e.g., '5m')")
     
-    @validator('name')
+    @field_validator('name')
     def validate_name(cls, v):
         """Validate monitor name."""
         if not v.strip():
@@ -143,14 +145,14 @@ class MonitorConfig(BaseModel):
             raise ValueError('Monitor name contains invalid characters')
         return v.strip()
     
-    @validator('query')
+    @field_validator('query')
     def validate_query(cls, v):
         """Validate monitor query is not empty."""
         if not v.strip():
             raise ValueError('Monitor query cannot be empty')
         return v.strip()
     
-    @validator('trigger_conditions')
+    @field_validator('trigger_conditions')
     def validate_trigger_conditions(cls, v):
         """Validate trigger conditions."""
         if not v:
@@ -163,7 +165,7 @@ class MonitorConfig(BaseModel):
         
         return v
     
-    @validator('evaluation_delay')
+    @field_validator('evaluation_delay')
     def validate_evaluation_delay(cls, v):
         """Validate evaluation delay format."""
         if v and not re.match(r'^\d+[smh]$', v):
@@ -191,14 +193,14 @@ class MonitorResponse(BaseModel):
     evaluation_delay: Optional[str] = Field(None, description="Evaluation delay setting")
     group_notifications: Optional[bool] = Field(None, description="Group notifications setting")
     
-    @validator('id')
+    @field_validator('id')
     def validate_id(cls, v):
         """Validate monitor ID."""
         if not v or not isinstance(v, str):
             raise ValueError('Monitor ID must be a non-empty string')
         return v
     
-    @validator('version')
+    @field_validator('version')
     def validate_version(cls, v):
         """Validate version is positive."""
         if v < 1:
@@ -218,7 +220,7 @@ class MonitorStatusInfo(BaseModel):
     last_evaluation: Optional[str] = Field(None, description="Last evaluation timestamp")
     next_evaluation: Optional[str] = Field(None, description="Next scheduled evaluation timestamp")
     
-    @validator('monitor_id')
+    @field_validator('monitor_id')
     def validate_monitor_id(cls, v):
         """Validate monitor ID."""
         if not v or not isinstance(v, str):
@@ -239,14 +241,14 @@ class ActiveAlert(BaseModel):
     alert_id: str = Field(..., description="Unique alert identifier")
     status: str = Field(default="Active", description="Alert status")
     
-    @validator('monitor_id', 'alert_id')
+    @field_validator('monitor_id', 'alert_id')
     def validate_ids(cls, v):
         """Validate ID fields."""
         if not v or not isinstance(v, str):
             raise ValueError('ID must be a non-empty string')
         return v
     
-    @validator('severity')
+    @field_validator('severity')
     def validate_severity(cls, v):
         """Validate severity level."""
         valid_severities = ['Critical', 'Warning', 'MissingData']
@@ -266,7 +268,7 @@ class MonitorHistoryEntry(BaseModel):
     trigger_value: Optional[float] = Field(None, description="Value that caused trigger (if triggered)")
     error_message: Optional[str] = Field(None, description="Error message if execution failed")
     
-    @validator('execution_duration_ms')
+    @field_validator('execution_duration_ms')
     def validate_duration(cls, v):
         """Validate execution duration."""
         if v is not None and v < 0:
@@ -284,14 +286,14 @@ class MonitorHistoryResponse(BaseModel):
     trigger_patterns: Dict[str, Any] = Field(..., description="Trigger pattern analysis")
     metadata: Dict[str, Any] = Field(..., description="Request metadata and pagination info")
     
-    @validator('monitor_id')
+    @field_validator('monitor_id')
     def validate_monitor_id(cls, v):
         """Validate monitor ID."""
         if not v or not isinstance(v, str):
             raise ValueError('Monitor ID must be a non-empty string')
         return v
     
-    @validator('execution_history')
+    @field_validator('execution_history')
     def validate_execution_history(cls, v):
         """Validate execution history is a list."""
         if not isinstance(v, list):
@@ -309,12 +311,11 @@ class MonitorValidationResult(BaseModel):
     trigger_conditions_valid: Optional[bool] = Field(None, description="Whether trigger conditions are valid")
     notifications_valid: Optional[bool] = Field(None, description="Whether notification configurations are valid")
     
-    @validator('valid')
-    def validate_consistency(cls, v, values):
+    @model_validator(mode="after")
+    def validate_consistency(self) -> "MonitorValidationResult":
         """Ensure validity is consistent with errors."""
-        errors = values.get('errors', [])
-        if v and errors:
+        if self.valid and self.errors:
             raise ValueError('Configuration cannot be valid if there are errors')
-        if not v and not errors:
+        if not self.valid and not self.errors:
             raise ValueError('Configuration must have errors if marked as invalid')
-        return v
+        return self

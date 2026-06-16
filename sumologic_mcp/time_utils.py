@@ -201,30 +201,29 @@ class TimeParser:
     
     @classmethod
     def to_sumo_api_format(cls, dt: datetime) -> str:
-        """Convert datetime to exact Sumo Logic API format.
-        
+        """Convert datetime to Sumo Logic search jobs API format.
+
         Args:
             dt: Datetime object to convert
-            
+
         Returns:
-            Time string in exact Sumo Logic API format (ISO 8601 with milliseconds and Z suffix)
+            Time string as epoch milliseconds (required by Sumo Logic search jobs API)
         """
-        # Sumo Logic API expects ISO 8601 format with milliseconds and Z suffix
-        # Format: YYYY-MM-DDTHH:MM:SS.sssZ
-        return dt.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z'
-    
+        import calendar
+        epoch_seconds = calendar.timegm(dt.timetuple())
+        return str(epoch_seconds * 1000 + dt.microsecond // 1000)
+
     @classmethod
     def to_sumo_time_format(cls, dt: datetime) -> str:
         """Convert datetime to Sumo Logic API time format.
-        
+
         Args:
             dt: Datetime object to convert
-            
+
         Returns:
-            Time string in Sumo Logic API format (ISO 8601 with milliseconds)
+            Time string as epoch milliseconds (required by Sumo Logic search jobs API)
         """
-        # Sumo Logic expects ISO format with milliseconds
-        return dt.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z'
+        return cls.to_sumo_api_format(dt)
     
     @classmethod
     def validate_time_range(cls, from_time: str, to_time: str) -> tuple[datetime, datetime]:

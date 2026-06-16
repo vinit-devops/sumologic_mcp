@@ -4,7 +4,7 @@ import json
 import os
 from pathlib import Path
 from typing import Optional, Dict, Any
-from pydantic import BaseModel, Field, validator, ValidationError
+from pydantic import BaseModel, Field, field_validator, ValidationError
 from dotenv import load_dotenv
 
 # Load environment variables from .env file if it exists
@@ -14,88 +14,71 @@ load_dotenv()
 class SumoLogicConfig(BaseModel):
     """Configuration for Sumo Logic MCP server."""
     
-    # Sumo Logic API credentials (supports both new and reference environment variables)
+    # Sumo Logic API credentials (supports both new and reference environment variables).
+    # Environment loading is handled explicitly in from_env/from_env_and_file.
     access_id: str = Field(
         ..., 
-        description="Sumo Logic Access ID",
-        env="SUMOLOGIC_ACCESS_ID"
+        description="Sumo Logic Access ID"
     )
     access_key: str = Field(
         ..., 
-        description="Sumo Logic Access Key",
-        env="SUMOLOGIC_ACCESS_KEY"
+        description="Sumo Logic Access Key"
     )
     endpoint: str = Field(
         ..., 
-        description="Sumo Logic API endpoint",
-        env="SUMOLOGIC_ENDPOINT"
+        description="Sumo Logic API endpoint"
     )
     
     # Server configuration
     timeout: int = Field(
         default=30, 
-        description="Request timeout in seconds",
-        env="SUMOLOGIC_TIMEOUT"
+        description="Request timeout in seconds"
     )
     max_retries: int = Field(
         default=3, 
-        description="Maximum retry attempts",
-        env="SUMOLOGIC_MAX_RETRIES"
+        description="Maximum retry attempts"
     )
     rate_limit_delay: float = Field(
         default=1.0, 
-        description="Delay between rate-limited requests in seconds",
-        env="SUMOLOGIC_RATE_LIMIT_DELAY"
+        description="Delay between rate-limited requests in seconds"
     )
     
     # Logging configuration
     log_level: str = Field(
         default="INFO", 
-        description="Logging level",
-        env="SUMOLOGIC_LOG_LEVEL"
+        description="Logging level"
     )
     log_format: str = Field(
         default="json", 
-        description="Log format (json or text)",
-        env="SUMOLOGIC_LOG_FORMAT"
+        description="Log format (json or text)"
     )
     
     # MCP server configuration
     server_name: str = Field(
         default="sumologic-mcp-server", 
-        description="MCP server name",
-        env="SUMOLOGIC_SERVER_NAME"
+        description="MCP server name"
     )
     server_version: str = Field(
         default="0.1.0", 
-        description="MCP server version",
-        env="SUMOLOGIC_SERVER_VERSION"
+        description="MCP server version"
     )
     
     # Reference implementation compatibility
     query_timeout: int = Field(
         default=300,
-        description="Query timeout for compatibility with reference implementation",
-        env="QUERY_TIMEOUT"
+        description="Query timeout for compatibility with reference implementation"
     )
     max_results: int = Field(
         default=1000,
-        description="Maximum results for compatibility with reference implementation",
-        env="MAX_RESULTS"
+        description="Maximum results for compatibility with reference implementation"
     )
     default_vmware_source: str = Field(
         default="otel/vmware",
-        description="Default VMware source category for metrics exploration",
-        env="DEFAULT_VMWARE_SOURCE"
+        description="Default VMware source category for metrics exploration"
     )
 
-    class Config:
-        """Pydantic configuration."""
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = False
-        
-    @validator("endpoint")
+    @field_validator("endpoint")
+    @classmethod
     def validate_endpoint(cls, v: str) -> str:
         """Validate Sumo Logic endpoint URL."""
         if not v.startswith(("http://", "https://")):
@@ -104,7 +87,8 @@ class SumoLogicConfig(BaseModel):
             raise ValueError("Endpoint must be a valid Sumo Logic domain")
         return v.rstrip("/")
     
-    @validator("log_level")
+    @field_validator("log_level")
+    @classmethod
     def validate_log_level(cls, v: str) -> str:
         """Validate log level."""
         valid_levels = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
@@ -113,7 +97,8 @@ class SumoLogicConfig(BaseModel):
             raise ValueError(f"Log level must be one of: {', '.join(valid_levels)}")
         return v_upper
     
-    @validator("log_format")
+    @field_validator("log_format")
+    @classmethod
     def validate_log_format(cls, v: str) -> str:
         """Validate log format."""
         valid_formats = {"json", "text"}
@@ -122,7 +107,8 @@ class SumoLogicConfig(BaseModel):
             raise ValueError(f"Log format must be one of: {', '.join(valid_formats)}")
         return v_lower
     
-    @validator("timeout")
+    @field_validator("timeout")
+    @classmethod
     def validate_timeout(cls, v: int) -> int:
         """Validate timeout value."""
         if v <= 0:
@@ -131,7 +117,8 @@ class SumoLogicConfig(BaseModel):
             raise ValueError("Timeout must not exceed 300 seconds")
         return v
     
-    @validator("max_retries")
+    @field_validator("max_retries")
+    @classmethod
     def validate_max_retries(cls, v: int) -> int:
         """Validate max retries value."""
         if v < 0:
@@ -140,7 +127,8 @@ class SumoLogicConfig(BaseModel):
             raise ValueError("Max retries should not exceed 10")
         return v
     
-    @validator("rate_limit_delay")
+    @field_validator("rate_limit_delay")
+    @classmethod
     def validate_rate_limit_delay(cls, v: float) -> float:
         """Validate rate limit delay."""
         if v < 0:
@@ -149,7 +137,8 @@ class SumoLogicConfig(BaseModel):
             raise ValueError("Rate limit delay should not exceed 60 seconds")
         return v
     
-    @validator("query_timeout")
+    @field_validator("query_timeout")
+    @classmethod
     def validate_query_timeout(cls, v: int) -> int:
         """Validate query timeout value."""
         if v <= 0:
@@ -158,7 +147,8 @@ class SumoLogicConfig(BaseModel):
             raise ValueError("Query timeout must not exceed 3600 seconds (1 hour)")
         return v
     
-    @validator("max_results")
+    @field_validator("max_results")
+    @classmethod
     def validate_max_results(cls, v: int) -> int:
         """Validate max results value."""
         if v <= 0:
@@ -167,7 +157,8 @@ class SumoLogicConfig(BaseModel):
             raise ValueError("Max results should not exceed 100,000")
         return v
     
-    @validator("default_vmware_source")
+    @field_validator("default_vmware_source")
+    @classmethod
     def validate_default_vmware_source(cls, v: str) -> str:
         """Validate default VMware source category."""
         if not v.strip():
@@ -505,14 +496,16 @@ class SearchRequest(BaseModel):
     by_receipt_time: bool = Field(default=False, description="Search by receipt time")
     auto_parsing_mode: Optional[str] = Field(None, description="Auto parsing mode")
     
-    @validator("query")
+    @field_validator("query")
+    @classmethod
     def validate_query(cls, v: str) -> str:
         """Validate search query."""
         if not v.strip():
             raise ValueError("Query cannot be empty")
         return v.strip()
     
-    @validator("from_time", "to_time")
+    @field_validator("from_time", "to_time")
+    @classmethod
     def validate_time_format(cls, v: str) -> str:
         """Validate time format (ISO 8601, relative time, or 'now')."""
         if not v.strip():
@@ -569,7 +562,8 @@ class DashboardConfig(BaseModel):
         description="Auto-refresh interval in seconds (minimum 30)"
     )
     
-    @validator("title")
+    @field_validator("title")
+    @classmethod
     def validate_title(cls, v: str) -> str:
         """Validate dashboard title."""
         if not v.strip():
@@ -578,7 +572,8 @@ class DashboardConfig(BaseModel):
             raise ValueError("Title cannot exceed 255 characters")
         return v.strip()
     
-    @validator("panels")
+    @field_validator("panels")
+    @classmethod
     def validate_panels(cls, v: list) -> list:
         """Validate panels configuration."""
         if not v:

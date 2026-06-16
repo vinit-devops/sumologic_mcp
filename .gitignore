@@ -169,6 +169,8 @@ cython_debug/
 config.json
 test_*.py
 debug_*.py
+# But always track the real test suite under tests/.
+!tests/test_*.py
 
 # macOS
 .DS_Store

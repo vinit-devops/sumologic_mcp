@@ -75,10 +75,17 @@ class SumoLogicAPIClient:
             )
         )
         
+        # Only transient/infra-class failures should count toward opening the
+        # circuit. Bare `Exception` would mean user errors (e.g. invalid query
+        # syntax → 4xx, validation errors) also count, which can trip the
+        # breaker on benign batches of work and degrade tools unnecessarily.
         circuit_breaker_config = CircuitBreakerConfig(
             failure_threshold=max(5, self.config.max_retries * 2),
             recovery_timeout=60.0,
-            expected_exception=Exception,
+            expected_exception=(
+                APIError, RateLimitError, TimeoutError,
+                ConnectionError, OSError, httpx.RequestError,
+            ),
             success_threshold=3
         )
         
@@ -819,37 +826,56 @@ class SumoLogicAPIClient:
                     search_state=job_state
                 )
             
-            # Get messages (log records)
+            # Try /records first (for aggregate queries), fall back to /messages.
+            # If both are empty, return empty results gracefully.
             params = {
                 "offset": offset,
                 "limit": limit
             }
-            
-            response = await self._make_request(
-                method="GET",
-                endpoint=f"/api/v1/search/jobs/{job_id}/messages",
-                params=params,
-                operation_type="search_results"
-            )
-            
-            results = await self._parse_json_response(response)
-            
+
+            result_type = "records"
+            try:
+                response = await self._make_request(
+                    method="GET",
+                    endpoint=f"/api/v1/search/jobs/{job_id}/records",
+                    params=params,
+                    operation_type="search_results"
+                )
+                results = await self._parse_json_response(response)
+            except Exception:
+                results = {"records": [], "fields": []}
+
+            if not results.get("records"):
+                # No records — try messages (may also be empty for no-match queries)
+                result_type = "messages"
+                try:
+                    response = await self._make_request(
+                        method="GET",
+                        endpoint=f"/api/v1/search/jobs/{job_id}/messages",
+                        params=params,
+                        operation_type="search_results"
+                    )
+                    results = await self._parse_json_response(response)
+                except Exception:
+                    results = {"messages": [], "fields": []}
+
             logger.info(
                 f"Retrieved search results",
                 extra={
                     "job_id": job_id,
-                    "returned_count": len(results.get("messages", [])),
+                    "result_type": result_type,
+                    "returned_count": len(results.get(result_type, [])),
                     "offset": offset,
                     "limit": limit
                 }
             )
-            
+
             # Combine with job status for complete result
             return {
                 "job_id": job_id,
                 "status": status,
                 "results": results,
-                "messages": results.get("messages", []),
+                "messages": results.get(result_type, []),
                 "fields": results.get("fields", [])
             }
             
@@ -1542,14 +1568,14 @@ class SumoLogicAPIClient:
     
     async def list_collectors(self, limit: int = 100, offset: int = 0) -> Dict[str, Any]:
         """List collectors with pagination.
-        
+
         Args:
             limit: Maximum collectors to return (1-1000)
             offset: Result offset for pagination
-            
+
         Returns:
             Dictionary containing collectors list and metadata
-            
+
         Raises:
             ValidationError: If parameters are invalid
             APIError: If API request fails
@@ -1586,17 +1612,17 @@ class SumoLogicAPIClient:
                 operation_type="collector"
             )
             
-            collectors = await self._parse_json_response(response)
-            
+            result = await self._parse_json_response(response)
+
             logger.info(
-                f"Retrieved {len(collectors.get('collectors', []))} collectors",
+                f"Retrieved {len(result.get('collectors', []))} collectors",
                 extra={
                     "limit": limit,
                     "offset": offset
                 }
             )
-            
-            return collectors
+
+            return result
             
         except APIError as e:
             raise APIError(
@@ -2374,8 +2400,8 @@ class SumoLogicAPIClient:
                 f"Retrieved monitor",
                 extra={
                     "monitor_id": monitor_id,
-                    "name": monitor.get("name"),
-                    "type": monitor.get("monitorType"),
+                    "monitor_name": monitor.get("name"),
+                    "monitor_type": monitor.get("monitorType"),
                     "is_disabled": monitor.get("isDisabled")
                 }
             )
@@ -2661,6 +2687,84 @@ class SumoLogicAPIClient:
                 context={"monitor_id": monitor_id}
             ) from e
     
+    # Severity ranking used to pick the most significant active trigger when a
+    # monitor reports multiple non-normal states (highest priority first).
+    _TRIGGER_SEVERITY_ORDER = ["Critical", "Warning", "MissingData"]
+
+    @staticmethod
+    def _unwrap_monitor_item(element: Dict[str, Any]) -> Dict[str, Any]:
+        """Normalize a monitor object to a flat monitor dict.
+
+        Most paths already yield flat monitor objects (list_monitors flattens
+        search results, and the get-by-id endpoint returns the monitor
+        directly). This helper is defensive: if an element is wrapped as
+        {"item": {...monitor...}, ...}, it unwraps it; otherwise it returns the
+        element unchanged.
+        """
+        if isinstance(element, dict) and isinstance(element.get("item"), dict):
+            return element["item"]
+        return element
+
+    def _normalize_monitor_status(
+        self, is_disabled: bool, status_array: Optional[List[str]]
+    ) -> tuple[str, Optional[str]]:
+        """Map a raw Sumo Logic monitor status into the tool-facing enum value.
+
+        Sumo Logic exposes monitor state as an array (e.g. ["Normal"],
+        ["Disabled"], ["Critical"], ["Warning", "MissingData"]). The MCP tool
+        layer expects one of: "Normal", "Triggered", "Disabled", "Unknown".
+
+        Returns:
+            (status, current_trigger_severity) where current_trigger_severity is
+            the most significant active severity when the monitor is triggered,
+            otherwise None.
+        """
+        statuses = [s for s in (status_array or []) if isinstance(s, str)]
+
+        if is_disabled or "Disabled" in statuses:
+            return "Disabled", None
+
+        # Anything that is neither Normal nor Disabled is an active trigger
+        # (e.g. Critical, Warning, MissingData).
+        triggered = [s for s in statuses if s not in ("Normal", "Disabled")]
+        if triggered:
+            for severity in self._TRIGGER_SEVERITY_ORDER:
+                if severity in triggered:
+                    return "Triggered", severity
+            return "Triggered", triggered[0]
+
+        if "Normal" in statuses:
+            return "Normal", None
+
+        return "Unknown", None
+
+    def _build_monitor_status_record(self, monitor: Dict[str, Any]) -> Dict[str, Any]:
+        """Build a status record for the tool layer from a flat monitor object.
+
+        Note: the Monitors Management API does not expose live evaluation timing
+        (lastTriggered / triggerCount24h / lastEvaluation / nextEvaluation), so
+        those fields are reported as None/0 and surfaced as unavailable.
+        """
+        status_array = monitor.get("status")
+        is_disabled = bool(monitor.get("isDisabled", False))
+        normalized_status, severity = self._normalize_monitor_status(
+            is_disabled, status_array
+        )
+
+        return {
+            "monitorId": monitor.get("id"),
+            "monitorName": monitor.get("name", "Unknown"),
+            "status": normalized_status,
+            "currentTriggerSeverity": severity,
+            "lastTriggered": None,
+            "triggerCount24h": 0,
+            "lastEvaluation": None,
+            "nextEvaluation": None,
+            "isDisabled": is_disabled,
+            "rawStatus": status_array,
+            "monitorType": monitor.get("monitorType"),
+        }
+
     async def get_monitor_status(
         self,
         monitor_id: Optional[str] = None,
@@ -2669,16 +2773,23 @@ class SumoLogicAPIClient:
         offset: int = 0
     ) -> Dict[str, Any]:
         """Get monitor status information.
-        
+
+        Derives monitor status from the Monitors Management API. For a single
+        monitor it reads /api/v1/monitors/{id}; for all monitors it delegates to
+        list_monitors (which searches the library and recurses into folders),
+        then normalizes each monitor's `status` array.
+
         Args:
             monitor_id: Optional specific monitor ID to get status for
-            filter_status: Optional status filter (triggered, normal, disabled)
-            limit: Maximum results to return (1-1000)
-            offset: Result offset for pagination
-            
+            filter_status: Accepted for compatibility; status filtering is applied
+                by the tool layer against the normalized records returned here.
+            limit: Page size for the multi-monitor search (1-1000)
+            offset: Starting result offset for pagination
+
         Returns:
-            Dictionary containing monitor status information
-            
+            For a single monitor: {"data": <status record>}.
+            For all monitors: {"data": [<status record>, ...], "total": <count>}.
+
         Raises:
             ValidationError: If parameters are invalid
             APIError: If API request fails
@@ -2689,15 +2800,15 @@ class SumoLogicAPIClient:
                 field_name="limit",
                 field_value=limit
             )
-        
+
         if offset < 0:
             raise ValidationError(
                 "Offset must be non-negative",
                 field_name="offset",
                 field_value=offset
             )
-        
-        # Build endpoint and parameters
+
+        # Single monitor: read the monitor object directly and normalize it.
         if monitor_id:
             if not monitor_id.strip():
                 raise ValidationError(
@@ -2706,47 +2817,39 @@ class SumoLogicAPIClient:
                     field_value=monitor_id
                 )
             monitor_id = monitor_id.strip()
-            endpoint = f"/api/v1/monitors/{monitor_id}/status"
-            params = {}
-        else:
-            endpoint = "/api/v1/monitors/status"
-            params = {
-                "limit": limit,
-                "offset": offset
-            }
-            
-            if filter_status:
-                params["status"] = filter_status.strip()
-        
-        logger.debug(
-            "Getting monitor status",
-            extra={
-                "monitor_id": monitor_id,
-                "filter_status": filter_status,
-                "limit": limit if not monitor_id else None
-            }
-        )
-        
-        try:
-            response = await self._make_request(
-                method="GET",
-                endpoint=endpoint,
-                params=params,
-                operation_type="monitor"
+
+            logger.debug(
+                "Getting monitor status",
+                extra={"monitor_id": monitor_id, "filter_status": filter_status}
             )
-            
-            status_result = await self._parse_json_response(response)
-            
+
+            monitor = await self.get_monitor(monitor_id)
+            record = self._build_monitor_status_record(
+                self._unwrap_monitor_item(monitor)
+            )
+
             logger.info(
-                f"Retrieved monitor status",
-                extra={
-                    "monitor_id": monitor_id,
-                    "status_count": len(status_result.get("data", [])) if not monitor_id else 1
-                }
+                "Retrieved monitor status",
+                extra={"monitor_id": monitor_id, "status": record["status"]}
             )
-            
-            return status_result
-            
+
+            return {"data": record}
+
+        # All monitors: reuse list_monitors, which already searches the
+        # Monitors Management library (including recursion into folders) and
+        # normalizes the response shape. We then derive a status record per
+        # monitor from each returned object's `status` array.
+        logger.debug(
+            "Getting status for all monitors",
+            extra={"filter_status": filter_status, "limit": limit, "offset": offset}
+        )
+
+        try:
+            listing = await self.list_monitors(
+                limit=limit,
+                offset=offset,
+                include_folders=True,
+            )
         except APIError as e:
             raise APIError(
                 f"Failed to get monitor status: {e.message}",
@@ -2755,6 +2858,21 @@ class SumoLogicAPIClient:
                 request_id=e.request_id,
                 context={"monitor_id": monitor_id}
             ) from e
+
+        records: List[Dict[str, Any]] = []
+        for item in listing.get("data", []):
+            monitor = self._unwrap_monitor_item(item)
+            # Skip folder entries; only real monitors carry a status.
+            if monitor.get("contentType") == "MonitorsLibraryFolder":
+                continue
+            records.append(self._build_monitor_status_record(monitor))
+
+        logger.info(
+            "Retrieved monitor status",
+            extra={"status_count": len(records)}
+        )
+
+        return {"data": records, "total": len(records)}
     
     async def enable_monitor(self, monitor_id: str) -> Dict[str, Any]:
         """Enable a disabled monitor.

@@ -1,6 +1,6 @@
 """Configuration models for Sumo Logic MCP server."""
 
-from pydantic import BaseModel, Field, validator, HttpUrl
+from pydantic import BaseModel, Field, field_validator, HttpUrl
 from typing import Optional, Dict, Any, List
 import re
 
@@ -15,7 +15,7 @@ class SumoLogicConfig(BaseModel):
     max_retries: int = Field(default=3, description="Maximum retry attempts", ge=0, le=10)
     rate_limit_delay: float = Field(default=1.0, description="Delay between rate-limited requests", ge=0.1, le=60.0)
     
-    @validator('endpoint')
+    @field_validator('endpoint')
     def validate_endpoint(cls, v):
         """Validate that endpoint is a proper Sumo Logic API URL."""
         if not v.startswith('https://'):
@@ -24,14 +24,14 @@ class SumoLogicConfig(BaseModel):
             raise ValueError('Endpoint must be a valid Sumo Logic API URL')
         return v
     
-    @validator('access_id')
+    @field_validator('access_id')
     def validate_access_id(cls, v):
         """Validate access ID format."""
         if not re.match(r'^[A-Za-z0-9]{14}$', v):
             raise ValueError('Access ID must be 14 alphanumeric characters')
         return v
     
-    @validator('access_key')
+    @field_validator('access_key')
     def validate_access_key(cls, v):
         """Validate access key format."""
         if len(v) < 20:
@@ -51,14 +51,14 @@ class SearchRequest(BaseModel):
     by_receipt_time: bool = Field(default=False, description="Search by receipt time instead of message time")
     auto_parsing_mode: Optional[str] = Field(default=None, description="Auto parsing mode ('intelligent', 'performance')")
     
-    @validator('query')
+    @field_validator('query')
     def validate_query(cls, v):
         """Validate search query is not empty after stripping whitespace."""
         if not v.strip():
             raise ValueError('Search query cannot be empty')
         return v.strip()
     
-    @validator('from_time', 'to_time')
+    @field_validator('from_time', 'to_time')
     def validate_time_format(cls, v):
         """Validate time format (ISO 8601, relative time, or 'now')."""
         # Allow 'now' as a valid time format
@@ -95,7 +95,7 @@ class SearchRequest(BaseModel):
             )
         return v
     
-    @validator('auto_parsing_mode')
+    @field_validator('auto_parsing_mode')
     def validate_auto_parsing_mode(cls, v):
         """Validate auto parsing mode."""
         if v is not None and v not in ['intelligent', 'performance']:
@@ -108,28 +108,28 @@ class DashboardConfig(BaseModel):
     
     title: str = Field(..., description="Dashboard title", min_length=1, max_length=255)
     description: Optional[str] = Field(None, description="Dashboard description", max_length=1000)
-    panels: List[Dict[str, Any]] = Field(..., description="Dashboard panels configuration", min_items=1)
+    panels: List[Dict[str, Any]] = Field(..., description="Dashboard panels configuration", min_length=1)
     refresh_interval: Optional[int] = Field(None, description="Auto-refresh interval in seconds", ge=30, le=86400)
     folder_id: Optional[str] = Field(None, description="Folder ID to place dashboard in")
     theme: Optional[str] = Field(default="Light", description="Dashboard theme")
     topology_label_map: Optional[Dict[str, Any]] = Field(None, description="Topology label mapping")
     domain: Optional[str] = Field(None, description="Dashboard domain")
     
-    @validator('title')
+    @field_validator('title')
     def validate_title(cls, v):
         """Validate dashboard title."""
         if not v.strip():
             raise ValueError('Dashboard title cannot be empty')
         return v.strip()
     
-    @validator('theme')
+    @field_validator('theme')
     def validate_theme(cls, v):
         """Validate dashboard theme."""
         if v is not None and v not in ['Light', 'Dark']:
             raise ValueError('Theme must be "Light" or "Dark"')
         return v
     
-    @validator('panels')
+    @field_validator('panels')
     def validate_panels(cls, v):
         """Validate panels configuration."""
         if not v:
@@ -157,14 +157,14 @@ class MetricsRequest(BaseModel):
     requested_data_points: Optional[int] = Field(default=600, ge=1, le=1440, description="Number of data points to return")
     max_tab_results: Optional[int] = Field(default=100, ge=1, le=1000, description="Maximum tabular results")
     
-    @validator('query')
+    @field_validator('query')
     def validate_metrics_query(cls, v):
         """Validate metrics query is not empty."""
         if not v.strip():
             raise ValueError('Metrics query cannot be empty')
         return v.strip()
     
-    @validator('from_time', 'to_time')
+    @field_validator('from_time', 'to_time')
     def validate_time_format(cls, v):
         """Validate time format (ISO 8601, relative time, or 'now')."""
         # Allow 'now' as a valid time format
@@ -213,7 +213,7 @@ class CollectorConfig(BaseModel):
     ephemeral: bool = Field(default=True, description="Whether collector is ephemeral")
     source_sync_mode: Optional[str] = Field(default="UI", description="Source synchronization mode")
     
-    @validator('name')
+    @field_validator('name')
     def validate_name(cls, v):
         """Validate collector name."""
         if not v.strip():
@@ -223,7 +223,7 @@ class CollectorConfig(BaseModel):
             raise ValueError('Collector name contains invalid characters')
         return v.strip()
     
-    @validator('source_sync_mode')
+    @field_validator('source_sync_mode')
     def validate_source_sync_mode(cls, v):
         """Validate source sync mode."""
         if v is not None and v not in ['UI', 'JSON', 'Both']:
@@ -246,7 +246,7 @@ class SourceConfig(BaseModel):
     default_date_format: Optional[str] = Field(None, description="Default date format")
     filters: Optional[List[Dict[str, Any]]] = Field(None, description="Processing filters")
     
-    @validator('name')
+    @field_validator('name')
     def validate_name(cls, v):
         """Validate source name."""
         if not v.strip():

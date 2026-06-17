@@ -29,17 +29,15 @@ class CollectorTools:
     
     async def list_collectors(
         self,
-        filter_type: Optional[str] = None,
         limit: int = 100,
         offset: int = 0
     ) -> Dict[str, Any]:
-        """List all collectors with optional filtering.
-        
+        """List all collectors with pagination.
+
         This tool retrieves a list of collectors from Sumo Logic with support
-        for type-based filtering and pagination.
-        
+        for pagination.
+
         Args:
-            filter_type: Optional collector type filter (Installable, Hosted, etc.)
             limit: Maximum number of collectors to return (1-1000)
             offset: Starting position for pagination (0-based)
             
@@ -66,15 +64,10 @@ class CollectorTools:
             if offset < 0:
                 raise ValidationError("Offset must be non-negative")
             
-            valid_types = ["Installable", "Hosted", "All"]
-            if filter_type and filter_type not in valid_types:
-                raise ValidationError(f"filter_type must be one of: {', '.join(valid_types)}")
-            
-            logger.info(f"Listing collectors with type='{filter_type}', limit={limit}, offset={offset}")
-            
+            logger.info(f"Listing collectors with limit={limit}, offset={offset}")
+
             # Get collectors from API
             collectors_response = await self.api_client.list_collectors(
-                filter_type=filter_type,
                 limit=limit,
                 offset=offset
             )
@@ -119,7 +112,7 @@ class CollectorTools:
                 "limit": limit,
                 "returned_count": len(formatted_collectors),
                 "has_more": has_more,
-                "filter_applied": filter_type is not None,
+                "filter_applied": False,
                 "collector_types": collector_types,
                 "summary": {
                     "online_collectors": sum(1 for c in formatted_collectors if c["status"]),
@@ -175,8 +168,13 @@ class CollectorTools:
             # Format collector data
             collector = collector_response.get("collector", collector_response)
             
-            # Get sources for this collector
-            sources = collector.get("sources", [])
+            # Get sources for this collector (requires separate API call)
+            try:
+                sources_response = await self.api_client.list_sources(collector_id)
+                sources = sources_response.get("sources", [])
+            except Exception as e:
+                logger.warning(f"Failed to fetch sources for collector {collector_id}: {e}")
+                sources = []
             formatted_sources = []
             
             for source in sources:
@@ -776,11 +774,6 @@ class CollectorTools:
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "filter_type": {
-                            "type": "string",
-                            "description": "Optional collector type filter",
-                            "enum": ["Installable", "Hosted", "All"]
-                        },
                         "limit": {
                             "type": "integer",
                             "description": "Maximum number of collectors to return (1-1000)",

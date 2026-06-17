@@ -377,6 +377,39 @@ Configure your MCP client to connect to this server. Example configuration for v
 - `validate_monitor_config`: Validate monitor configuration
 - `get_monitor_history`: Get monitor execution history and metrics
 
+### Generic API Tools
+- `api_call`: Execute raw, authenticated HTTP requests to any Sumo Logic API endpoint (useful for fallback or unsupported APIs)
+
+## CLI Subcommand
+
+This MCP server package also exposes an `api` CLI subcommand (similar to GitHub CLI's `gh api`) that lets you execute authenticated and rate-limited HTTP requests to Sumo Logic directly from your terminal. It reuses the credentials configured in your environment or configuration files.
+
+### Syntax
+```bash
+python -m sumologic_mcp api <PATH> [OPTIONS]
+```
+
+### Examples
+```bash
+# List all users (defaults to GET)
+python -m sumologic_mcp api "/v1/users"
+
+# Create a folder (using -X POST)
+python -m sumologic_mcp api "/v1/folders" -X POST --body '{"name": "New Folder", "parentId": "0000000000000001"}'
+
+# Delete a collector (using -X DELETE)
+python -m sumologic_mcp api "/v1/collectors/10002" -X DELETE
+
+# Get with query parameters
+python -m sumologic_mcp api "/v1/collectors" -p "limit=5" -p "offset=0"
+```
+
+### Options
+* `-X, --method`: HTTP Method (GET, POST, PUT, DELETE, PATCH). Defaults to `GET`.
+* `-b, --body`: JSON string request body for write requests.
+* `-p, --param`: Query parameters in `KEY=VALUE` format (can be specified multiple times).
+* `-H, --header`: Custom headers in `KEY=VALUE` or `KEY:VALUE` format (can be specified multiple times).
+
 ## Development
 
 ### Setup Development Environment

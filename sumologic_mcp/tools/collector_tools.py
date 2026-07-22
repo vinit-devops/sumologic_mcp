@@ -72,16 +72,31 @@ class CollectorTools:
             
             logger.info(f"Listing collectors with type='{filter_type}', limit={limit}, offset={offset}")
             
-            # Get collectors from API
-            collectors_response = await self.api_client.list_collectors(
-                filter_type=filter_type,
-                limit=limit,
-                offset=offset
-            )
-            
-            # Extract collector data
-            collectors = collectors_response.get("collectors", [])
-            total_count = collectors_response.get("totalCount", len(collectors))
+           # Get collectors from API
+               # NOTE: SumoLogicAPIClient.list_collectors() has no filter_type
+               # parameter -- the underlying Sumo Logic Collector Management API
+               # (GET /api/v1/collectors) has no server-side type filter either.
+               # Filtering is applied client-side below instead.
+               collectors_response = await self.api_client.list_collectors(
+                   limit=limit,
+                   offset=offset
+               )
+               
+               # Extract collector data
+               collectors = collectors_response.get("collectors", [])
+               total_count = collectors_response.get("totalCount", len(collectors))
+
+               # Apply the type filter client-side, since the API itself doesn't
+               # support one. NOTE: filtering happens *after* the API has already
+               # paginated by limit/offset, so a filtered page can return fewer
+               # than `limit` matches even when more exist beyond this page --
+               # pagination position (offset/has_more/total_count below) tracks
+               # the underlying unfiltered set, not the filtered one.
+               if filter_type and filter_type != "All":
+                   collectors = [
+                       c for c in collectors
+                       if c.get("collectorType", "Unknown") == filter_type
+                   ]
             
             # Format collector entries and collect statistics
             formatted_collectors = []
